@@ -1,0 +1,14 @@
+version: 1
+default_timezone: Asia/Shanghai
+platforms:
+  bilibili:
+    research: true
+    publishing: dry-run-only
+  xiaohongshu:
+    publishing: dry-run-only
+  douyin:
+    publishing: dry-run-only
+  zhihu:
+    publishing: dry-run-only
+  youtube:
+    publishing: dry-run-only

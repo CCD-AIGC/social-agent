@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f7f3" />
+    <title>Social Agent 工作台</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <div class="brand-lockup">
+          <div class="brand-mark">SA</div>
+          <div>
+            <div class="brand-name">Social Agent</div>
+            <div class="brand-subtitle">本地运营工作台</div>
+          </div>
+        </div>
+        <div class="mode-note"><span class="status-dot"></span><span>本机模式 · 默认 dry-run</span></div>
+        <nav class="nav-list">
+          <button class="nav-item is-active" data-view="overview"><span class="nav-icon">⌂</span>总览</button>
+          <button class="nav-item" data-view="platforms"><span class="nav-icon">▦</span>平台接入</button>
+          <button class="nav-item" data-view="research"><span class="nav-icon">⌕</span>选题调研</button>
+          <button class="nav-item" data-view="drafts"><span class="nav-icon">✎</span>内容草稿</button>
+          <button class="nav-item" data-view="publish"><span class="nav-icon">↗</span>发布预览</button>
+          <button class="nav-item" data-view="activity"><span class="nav-icon">≡</span>操作记录</button>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="footer-label">已接入账号</div>
+          <div class="account-mini"><span class="platform-badge">B</span><span id="sidebar-account">正在读取…</span><span class="connected-dot"></span></div>
+          <div class="footer-caption">凭证由 bili-cli 管理</div>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">CONTENT OPERATIONS</div>
+            <h1 id="page-title">运营总览</h1>
+          </div>
+          <div class="topbar-actions">
+            <span class="last-sync" id="last-sync">等待同步</span>
+            <button class="button button-quiet" id="refresh-button" title="刷新当前数据">刷新</button>
+          </div>
+        </header>
+
+        <section class="view is-visible" id="view-overview" data-view-panel="overview">
+          <div class="notice-bar"><span class="notice-icon">i</span><span>B 站提供账号概览，小红书支持导入官方笔记报表。所有发布均为本地预览。</span></div>
+          <div class="metric-grid">
+            <article class="metric-card accent-green">
+              <div class="metric-label">账号状态</div>
+              <div class="metric-value" id="account-status">读取中</div>
+              <div class="metric-foot" id="account-name">正在检查 bili-cli 登录态</div>
+            </article>
+            <article class="metric-card accent-blue">
+              <div class="metric-label">累计播放</div>
+              <div class="metric-value" id="total-plays">—</div>
+              <div class="metric-foot" id="metric-date">等待 B 站概览</div>
+            </article>
+            <article class="metric-card accent-orange">
+              <div class="metric-label">粉丝总数</div>
+              <div class="metric-value" id="total-fans">—</div>
+              <div class="metric-foot" id="new-fans">等待数据</div>
+            </article>
+            <article class="metric-card accent-purple">
+              <div class="metric-label">本地任务</div>
+              <div class="metric-value" id="operation-count">—</div>
+              <div class="metric-foot" id="operation-status">等待台账</div>
+            </article>
+          </div>
+          <section class="panel channel-panel">
+            <div class="panel-header"><div><div class="panel-kicker">PLATFORM STATUS</div><h2>平台状态与入口</h2></div><button class="text-button" data-view-target="platforms">管理平台 →</button></div>
+            <div class="channel-list" id="overview-platform-list"><div class="empty-state">正在检查平台状态…</div></div>
+          </section>
+          <div class="two-column">
+            <section class="panel panel-large">
+              <div class="panel-header"><div><div class="panel-kicker">BILIBILI ACCOUNT</div><h2>账号概况</h2></div><button class="text-button" data-action="open-account">查看账号</button></div>
+              <div class="profile-row">
+                <div class="profile-avatar" id="profile-avatar">B</div>
+                <div class="profile-main"><div class="profile-name" id="profile-name">正在读取…</div><div class="profile-meta" id="profile-meta">—</div></div>
+                <a class="outline-button" id="profile-link" href="#" target="_blank" rel="noreferrer">打开主页</a>
+              </div>
+              <div class="stat-strip">
+                <div><span>本周播放</span><strong id="week-plays">—</strong></div>
+                <div><span>访问人数</span><strong id="week-visitors">—</strong></div>
+                <div><span>互动率</span><strong id="interacting-percent">—</strong></div>
+                <div><span>超越同类</span><strong id="peer-percent">—</strong></div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-header"><div><div class="panel-kicker">QUICK ACTIONS</div><h2>快捷操作</h2></div></div>
+              <div class="quick-actions">
+                <button class="action-row" data-view-target="research"><span class="action-icon">⌕</span><span><strong>查看热搜</strong><small>获取 B 站公开趋势</small></span><span class="action-arrow">→</span></button>
+                <button class="action-row" data-view-target="drafts"><span class="action-icon">✎</span><span><strong>创建草稿</strong><small>一次准备多平台版本</small></span><span class="action-arrow">→</span></button>
+                <button class="action-row" data-view-target="publish"><span class="action-icon">↗</span><span><strong>预览发布</strong><small>校验素材并写入台账</small></span><span class="action-arrow">→</span></button>
+              </div>
+            </section>
+          </div>
+          <section class="panel recent-panel"><div class="panel-header"><div><div class="panel-kicker">RECENT WORKS</div><h2>最近作品</h2></div><span class="panel-muted">来自 B 站账号概览</span></div><div class="works-list" id="works-list"><div class="empty-state">正在读取作品数据…</div></div></section>
+        </section>
+
+        <section class="view" id="view-research" data-view-panel="research">
+          <div class="view-intro"><div><div class="eyebrow">RESEARCH</div><h2>选题调研</h2><p>从 B 站公开热搜开始，先看趋势，再决定是否进入内容草稿。</p></div><div class="control-group"><label for="research-limit">条数</label><select id="research-limit"><option>10</option><option>20</option><option>30</option></select><button class="button button-primary" id="research-button">刷新热搜</button></div></div>
+          <section class="panel"><div class="table-toolbar"><div><strong>B 站热搜</strong><span class="toolbar-meta" id="research-source">数据源：bili-cli</span></div><span class="panel-muted" id="research-updated">—</span></div><div class="research-table-wrap"><table class="data-table"><thead><tr><th>排名</th><th>关键词</th><th>热度</th><th>下一步</th></tr></thead><tbody id="research-table"><tr><td colspan="4"><div class="empty-state">点击“刷新热搜”开始调研</div></td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="view" id="view-platforms" data-view-panel="platforms">
+          <div class="view-intro"><div><div class="eyebrow">CHANNELS</div><h2>平台接入</h2><p>查看各平台的连接状态和当前能力；草稿与 dry-run 预览可跨平台使用。</p></div><button class="button button-quiet" id="platform-refresh">检查连接</button></div>
+          <div class="platform-grid" id="platform-grid"><div class="panel"><div class="empty-state">正在检查平台状态…</div></div></div>
+          <section class="panel integration-detail"><div class="panel-header"><div><div class="panel-kicker">INTEGRATION GUIDE</div><h2>平台接入说明</h2></div><span class="panel-muted">账号授权由你在平台官方页面完成</span></div><div class="integration-placeholder" id="integration-placeholder">选择一个平台查看当前接入状态与所需步骤。</div></section>
+        </section>
+
+        <section class="view" id="view-drafts" data-view-panel="drafts">
+          <div class="view-intro"><div><div class="eyebrow">CONTENT</div><h2>内容草稿</h2><p>先保存平台版本，再到发布预览中检查素材和任务记录。</p></div><span class="safe-pill">本地保存</span></div>
+          <div class="two-column drafts-layout"><section class="panel"><div class="panel-header"><div><div class="panel-kicker">NEW DRAFT</div><h2>创建内容</h2></div></div><form id="draft-form" class="form-stack"><label>标题<input name="title" required maxlength="100" placeholder="例如：AI 工具实践记录" /></label><label>正文<textarea name="body" required maxlength="20000" rows="7" placeholder="写下需要适配到各个平台的正文…"></textarea></label><fieldset><legend>目标平台</legend><div class="platform-checks"><label><input type="checkbox" name="platforms" value="bilibili" checked /> B 站</label><label><input type="checkbox" name="platforms" value="xiaohongshu" /> 小红书</label><label><input type="checkbox" name="platforms" value="douyin" /> 抖音</label><label><input type="checkbox" name="platforms" value="zhihu" /> 知乎</label><label><input type="checkbox" name="platforms" value="youtube" /> YouTube</label></div></fieldset><label>标签<input name="tags" placeholder="用逗号分隔，例如：AI,内容运营" /></label><div class="form-actions"><button class="button button-primary" type="submit">保存草稿</button><span class="form-hint" id="draft-form-status"></span></div></form></section><section class="panel"><div class="panel-header"><div><div class="panel-kicker">LOCAL DRAFTS</div><h2>已有草稿</h2></div><button class="text-button" id="draft-refresh">刷新</button></div><div class="draft-list" id="draft-list"><div class="empty-state">正在读取草稿…</div></div></section></div>
+        </section>
+
+        <section class="view" id="view-publish" data-view-panel="publish">
+          <div class="view-intro"><div><div class="eyebrow">PUBLISH PREVIEW</div><h2>发布预览</h2><p>这里会校验草稿、素材路径和目标平台，并写入本地操作台账。</p></div><span class="blocked-pill">真实发布未开启</span></div>
+          <section class="panel"><div class="publish-toolbar"><label>选择草稿<select id="publish-draft-select"><option value="">请选择本地草稿</option></select></label><button class="button button-primary" id="preview-button">生成预览</button></div><div class="publish-guard"><span class="guard-icon">!</span><div><strong>安全闸门</strong><p>当前只执行 dry-run，不会上传、发布或修改平台账号。</p></div></div><div id="preview-result" class="preview-result"><div class="empty-state">选择草稿后生成预览</div></div></section>
+        </section>
+
+        <section class="view" id="view-activity" data-view-panel="activity">
+          <div class="view-intro"><div><div class="eyebrow">AUDIT LOG</div><h2>操作记录</h2><p>查看本地调研、指标读取和发布预览留下的台账。</p></div><button class="button button-quiet" id="report-refresh">刷新记录</button></div>
+          <section class="panel"><div class="table-toolbar"><div><strong>最近操作</strong><span class="toolbar-meta">参数摘要不会包含账号秘密</span></div><span class="panel-muted" id="report-summary">—</span></div><div class="research-table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>动作</th><th>平台</th><th>状态</th><th>模式</th></tr></thead><tbody id="activity-table"><tr><td colspan="5"><div class="empty-state">正在读取台账…</div></td></tr></tbody></table></div></section>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
