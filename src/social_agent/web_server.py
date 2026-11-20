@@ -5,44 +5,74 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
+import tempfile
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import sys
 from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, urlsplit
 
 from .content import create_draft
+from .credentials import CredentialStore
 from .errors import SocialAgentError
 from .paths import app_home, drafts_path, secure_mkdir
 from .platforms.xiaohongshu import (
-    CREATOR_REPORT_URL,
     MAX_REPORT_BYTES,
     REPORT_CONTENT_TYPE,
     XiaohongshuAdapter,
 )
+from .platforms import get_adapter, list_platforms, sau
+from .platforms.opencli import research_sources
+from .platforms.wechat_mp import save_credentials
 from .publishing import dry_run_publish
+from .remote_drafts import capabilities, operation, prepare_handoff, probe_wechat_account, record_handoff, save_draft, submit_sau, validate_alias, verify_draft
 from .storage import StateStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = PROJECT_ROOT / "web"
 
-PLATFORM_CATALOG = [
-    {
-        "id": "xiaohongshu", "name": "小红书", "mark": "红", "url": CREATOR_REPORT_URL,
-        "auth": "创作服务平台官方导出 · 本地读取",
-        "available": ["已发布笔记", "作品基础指标", "跨平台草稿", "发布 dry-run 预览"],
-        "planned": ["实时登录检查", "人工确认发布"],
-        "next_step": "在小红书「内容分析」选择日期并导出数据，再将 XLSX 导入本机工作台。",
-    },
-    {"id": "douyin", "name": "抖音", "mark": "抖", "url": "https://creator.douyin.com/", "auth": "创作者服务中心登录；首版尚无账号读取连接器", "available": ["跨平台草稿", "发布 dry-run 预览"], "planned": ["账号状态", "作品/评论读取", "指标分析", "人工确认发布"], "next_step": "需要接入并验证专用连接器；平台 API 权限、浏览器会话和内容发布权限需分别核实。"},
-    {"id": "zhihu", "name": "知乎", "mark": "知", "url": "https://www.zhihu.com/creator", "auth": "知乎创作中心登录；首版尚无账号读取连接器", "available": ["跨平台草稿", "发布 dry-run 预览"], "planned": ["热榜/搜索", "回答与文章读取", "账号指标", "人工确认发布"], "next_step": "需要确定官方授权或审查过的专用 CLI；不会把 Cookie 写入项目配置。"},
-    {"id": "youtube", "name": "YouTube", "mark": "YT", "url": "https://studio.youtube.com/", "auth": "官方 Google OAuth；需要创建 OAuth 客户端并由用户授权", "available": ["跨平台草稿", "发布 dry-run 预览"], "planned": ["频道/视频读取", "评论管理", "Analytics", "人工确认发布"], "next_step": "需要 Google Cloud 项目、YouTube Data/Analytics API、OAuth 桌面客户端和配额/审核设置。"},
-    {"id": "bilibili", "name": "B 站", "mark": "B", "url": "https://space.bilibili.com/", "auth": "复用本机 bili-cli 登录态", "available": ["热搜调研", "账号资料", "账号概览", "跨平台草稿", "发布 dry-run 预览"], "planned": ["作品/评论读取", "人工确认投稿"], "next_step": "已连接。只读调用 bili-cli；发布功能仍关闭。"},
-]
+DRAFT_WORKERS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="remote-draft")
+SAU_WORKER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sau")
+
+CREATOR_LINKS = {
+    "wechat_mp": "https://mp.weixin.qq.com/",
+    "xiaohongshu": "https://creator.xiaohongshu.com/new/home",
+    "wechat_channels": "https://channels.weixin.qq.com/platform/post/list",
+    "bilibili": "https://member.bilibili.com/platform/upload-manager/article?spm_id_from=333.1007.0.0",
+}
+
+
+def wechat_materials_link() -> str:
+    try:
+        shortcut = CredentialStore().get("wechat_mp", "local-shortcuts", "materials-url")
+        if shortcut and "\r" not in shortcut and "\n" not in shortcut:
+            parts = urlsplit(shortcut)
+            if parts.scheme == "https" and parts.netloc == "mp.weixin.qq.com" and parts.path == "/cgi-bin/filepage":
+                return shortcut
+    except (SocialAgentError, ValueError):
+        pass
+    return CREATOR_LINKS["wechat_mp"]
+
+
+
+def _registered_account(alias: str, store: StateStore) -> str:
+    alias = validate_alias(alias)
+    if not any(row["alias"] == alias and row["platform"] == "wechat_mp" for row in store.list_accounts()):
+        raise SocialAgentError("credential_required", "请先在平台接入设置这个公众号账号。")
+    return alias
+
+
+def _local_draft(value: str) -> Path:
+    path = Path(value).expanduser().resolve()
+    if path.parent != drafts_path().resolve() or path.suffix != ".json":
+        raise SocialAgentError("invalid_draft", "请从工作台的草稿列表选择文件。")
+    return path
 
 
 def _json_bytes(payload: Any) -> bytes:
@@ -131,7 +161,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
             raise ValueError("无效的请求长度") from exc
-        if length > 1_000_000:
+        if not 0 <= length <= 1_000_000:
             raise ValueError("请求内容超过 1 MB 限制")
         raw = self.rfile.read(length)
         data = json.loads(raw.decode("utf-8")) if raw else {}
@@ -145,6 +175,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/go/wechat-materials":
+                self.send_response(HTTPStatus.FOUND)
+                self.send_header("Location", wechat_materials_link())
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.end_headers()
+                return
             if parsed.path == "/api/health":
                 self._send(
                     HTTPStatus.OK,
@@ -163,7 +200,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.OK, _cli(["doctor"]))
                 return
             if parsed.path == "/api/platforms":
-                platforms = [dict(item, connector_installed=False, connected=False, state="not_connected") for item in PLATFORM_CATALOG]
+                platforms = [
+                    dict(item, connector_installed=False, connected=False, state="not_connected",
+                         available=["跨平台草稿", "发布预览"] + [cap["label"] for cap in item.get("capabilities", [])],
+                         planned=[], next_step=item["notes"])
+                    for item in list_platforms() if item.get("url")
+                ]
+                for item in platforms:
+                    item["creator_url"] = CREATOR_LINKS.get(item["id"], item["url"])
+                next(item for item in platforms if item["id"] == "wechat_mp").update(
+                    connector_installed=True, state="api_setup")
+                next(item for item in platforms if item["id"] == "wechat_channels")["state"] = "handoff"
                 xhs = next(item for item in platforms if item["id"] == "xiaohongshu")
                 snapshot_available = XiaohongshuAdapter().probe()["status"]["snapshot_available"]
                 xhs.update(connector_installed=True, state="snapshot_ready" if snapshot_available else "import_required")
@@ -174,9 +221,37 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 bili["state"] = "connected" if bili["connected"] else "login_required"
                 self._send(HTTPStatus.OK, {"ok": True, "data": platforms})
                 return
+            if parsed.path == "/api/accounts":
+                self._send(HTTPStatus.OK, {"ok": True, "data": StateStore().list_accounts()})
+                return
+            if parsed.path == "/api/capabilities":
+                query = parse_qs(parsed.query)
+                result = capabilities(query.get("platform", [""])[0], query.get("account", [None])[0], StateStore())
+                self._send(HTTPStatus.OK, {"ok": True, "data": result})
+                return
             if parsed.path == "/api/accounts/probe":
-                platform = parse_qs(parsed.query).get("platform", ["bilibili"])[0]
+                query = parse_qs(parsed.query)
+                platform = query.get("platform", ["bilibili"])[0]
+                if platform == "wechat_mp":
+                    store = StateStore()
+                    alias = _registered_account(query.get("account", [""])[0], store)
+                    self._send(HTTPStatus.OK, {"ok": True, "data": probe_wechat_account(alias, store)})
+                    return
                 self._send(HTTPStatus.OK, _cli(["accounts", "probe", "--platform", platform], timeout=90))
+                return
+            if parsed.path == "/api/remote-drafts":
+                operation_id = parse_qs(parsed.query).get("operation", [""])[0]
+                self._send(HTTPStatus.OK, {"ok": True, "data": operation(StateStore(), operation_id)})
+                return
+            if parsed.path == "/api/bilibili/works":
+                self._send(HTTPStatus.OK, {"ok": True, "data": get_adapter("bilibili").works()})
+                return
+            if parsed.path == "/api/sau/accounts":
+                platform = parse_qs(parsed.query).get("platform", [""])[0]
+                self._send(HTTPStatus.OK, {"ok": True, "data": sau.accounts(platform)})
+                return
+            if parsed.path == "/api/research/sources":
+                self._send(HTTPStatus.OK, {"ok": True, "data": research_sources()})
                 return
             if parsed.path == "/api/research":
                 query = parse_qs(parsed.query)
@@ -200,6 +275,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send(HTTPStatus.OK, {"ok": True, "data": _draft_list()})
                 return
             self._serve_static(parsed.path)
+        except (SocialAgentError, ValueError) as exc:
+            self._send(HTTPStatus.BAD_REQUEST, _error_payload(exc))
         except Exception as exc:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, _error_payload(exc))
 
@@ -209,10 +286,59 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/draft-media":
+                self._save_local_media(parse_qs(parsed.query).get("kind", [""])[0])
+                return
             if parsed.path == "/api/xiaohongshu/import-notes":
                 self._import_xiaohongshu_notes()
                 return
+            if self.headers.get_content_type() != "application/json":
+                raise SocialAgentError("invalid_content_type", "请求需使用 JSON。")
             body = self._read_json()
+            if parsed.path == "/api/accounts/wechat-mp":
+                store = StateStore()
+                alias = validate_alias(str(body.get("account") or ""))
+                save_credentials(alias, str(body.get("app_id") or "").strip(), str(body.get("secret") or "").strip())
+                store.add_account("wechat_mp", alias)
+                store.save_account_verification("wechat_mp", alias, None)
+                self._send(HTTPStatus.OK, {"ok": True, "data": {"alias": alias}})
+                return
+            if parsed.path == "/api/remote-drafts":
+                result = save_draft(_local_draft(str(body.get("draft_path", ""))),
+                                    str(body.get("platform", "")), str(body.get("account", "")),
+                                    StateStore(), DRAFT_WORKERS)
+                self._send(HTTPStatus.ACCEPTED, {"ok": True, "data": result})
+                return
+            if parsed.path == "/api/sau/login":
+                if self.headers.get("Origin") != f"http://{self.headers.get('Host')}":
+                    raise SocialAgentError("invalid_origin", "请从工作台打开 SAU 扫码窗口。")
+                result = sau.start_login(str(body.get("platform", "")), str(body.get("account", "")).strip())
+                self._send(HTTPStatus.ACCEPTED, {"ok": True, "data": result})
+                return
+            if parsed.path == "/api/sau/video":
+                if self.headers.get("Origin") != f"http://{self.headers.get('Host')}" or body.get("confirmed") is not True:
+                    raise SocialAgentError("confirmation_required", "请从工作台确认这个平台操作。")
+                result = submit_sau(_local_draft(str(body.get("draft_path", ""))),
+                                    str(body.get("platform", "")), str(body.get("account", "")),
+                                    str(body.get("mode", "")), StateStore(), SAU_WORKER,
+                                    str(body.get("scheduled") or ""), str(body.get("expected_account") or "").strip())
+                self._send(HTTPStatus.ACCEPTED, {"ok": True, "data": result})
+                return
+            if parsed.path == "/api/remote-drafts/verify":
+                result = verify_draft(StateStore(), str(body.get("operation", "")), body.get("reference") or None)
+                self._send(HTTPStatus.OK, {"ok": True, "data": result})
+                return
+            if parsed.path == "/api/remote-drafts/handoff":
+                result = prepare_handoff(_local_draft(str(body.get("draft_path", ""))),
+                                         str(body.get("platform", "")), str(body.get("account", "")), StateStore())
+                self._send(HTTPStatus.OK, {"ok": True, "data": result})
+                return
+            if parsed.path == "/api/remote-drafts/receipt":
+                result = record_handoff(StateStore(), str(body.get("operation", "")),
+                                        str(body.get("account", "")), str(body.get("scope", "")),
+                                        str(body.get("reference") or ""))
+                self._send(HTTPStatus.OK, {"ok": True, "data": result})
+                return
             if parsed.path == "/api/drafts":
                 platforms = body.get("platforms")
                 if not isinstance(platforms, list):
@@ -223,6 +349,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     [str(item) for item in platforms],
                     [str(item) for item in body.get("tags", [])],
                     [str(item) for item in body.get("media", [])],
+                    cover=body.get("cover") or None,
+                    ai_generated=body.get("ai_generated") is True,
                 )
                 self._send(HTTPStatus.OK, {"ok": True, "data": {"path": str(path), "drafts": _draft_list()}})
                 return
@@ -238,6 +366,35 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.BAD_REQUEST, _error_payload(exc))
         except Exception as exc:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, _error_payload(exc))
+
+    def _save_local_media(self, kind: str) -> None:
+        formats = {
+            "video": ({"video/mp4": ".mp4", "video/quicktime": ".mov", "video/x-m4v": ".m4v"}, 512 * 1024 ** 2),
+            "cover": ({"image/jpeg": ".jpg"}, 64 * 1024),
+        }
+        if kind not in formats:
+            raise SocialAgentError("invalid_media", "请选择视频或 JPEG 封面。")
+        extensions, limit = formats[kind]
+        extension = extensions.get(self.headers.get_content_type())
+        length = int(self.headers.get("Content-Length", "0"))
+        if not extension or not 0 < length <= limit:
+            raise SocialAgentError("invalid_media", "视频支持 MP4、MOV（最大 512 MiB），封面支持 JPEG（最大 64 KiB）。")
+        directory = app_home() / "media"
+        secure_mkdir(directory)
+        fd, name = tempfile.mkstemp(suffix=extension, dir=directory)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                remaining = length
+                while remaining:
+                    chunk = self.rfile.read(min(remaining, 1024 * 1024))
+                    if not chunk:
+                        raise SocialAgentError("incomplete_upload", "本地文件传输中断。")
+                    stream.write(chunk)
+                    remaining -= len(chunk)
+        except BaseException:
+            Path(name).unlink(missing_ok=True)
+            raise
+        self._send(HTTPStatus.CREATED, {"ok": True, "data": {"path": name}})
 
     def _import_xiaohongshu_notes(self) -> None:
         if self.headers.get_content_type() != REPORT_CONTENT_TYPE:

@@ -15,9 +15,11 @@ from .content import create_draft
 from .credentials import CredentialStore
 from .errors import SocialAgentError
 from .paths import app_home, config_path, database_path
-from .platforms import get_adapter, list_platforms
+from .platforms import get_adapter, list_platforms, sau
+from .platforms.opencli import executable as opencli_executable
 from .platforms.xiaohongshu import MAX_REPORT_BYTES, XiaohongshuAdapter
 from .publishing import dry_run_publish
+from .remote_drafts import capabilities, prepare_handoff, probe_wechat_account, record_handoff, save_draft, verify_draft
 from .scheduler import normalize_due_at, run_due_previews
 from .storage import StateStore
 
@@ -40,6 +42,7 @@ def _parser() -> argparse.ArgumentParser:
     account_add.add_argument("--alias", required=True)
     account_probe = account_sub.add_parser("probe", help="读取平台现有登录状态，不导入凭证")
     account_probe.add_argument("--platform", required=True)
+    account_probe.add_argument("--account")
     cred = account_sub.add_parser("credential", help="系统 Keychain 中的凭证操作")
     cred_sub = cred.add_subparsers(dest="credential_command", required=True)
     cred_set = cred_sub.add_parser("set", help="交互式录入秘密到 Keychain")
@@ -66,8 +69,30 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("--tag", action="append", default=[], dest="tags")
     create.add_argument("--media", action="append", default=[])
     create.add_argument("--output", type=Path)
+    create.add_argument("--cover")
+    create.add_argument("--ai-generated", action="store_true")
     show = content_sub.add_parser("show", help="查看本地草稿")
     show.add_argument("draft", type=Path)
+
+    capability = sub.add_parser("capabilities", help="显示平台动作和接入方式")
+    capability.add_argument("--platform", required=True)
+    capability.add_argument("--account")
+
+    drafts = sub.add_parser("drafts", help="保存或复查平台草稿")
+    draft_sub = drafts.add_subparsers(dest="drafts_command", required=True)
+    for command in ("save", "handoff"):
+        action = draft_sub.add_parser(command)
+        action.add_argument("--draft", type=Path, required=True)
+        action.add_argument("--platform", required=True)
+        action.add_argument("--account", required=True)
+    verify = draft_sub.add_parser("verify")
+    verify.add_argument("--operation", required=True)
+    verify.add_argument("--reference")
+    receipt = draft_sub.add_parser("record", help="登记已人工复查的视频草稿")
+    receipt.add_argument("--operation", required=True)
+    receipt.add_argument("--account", required=True)
+    receipt.add_argument("--scope", choices=["account", "browser"], required=True)
+    receipt.add_argument("--reference", default="")
 
     publish = sub.add_parser("publish", help="检查并预览跨平台发布")
     publish.add_argument("--draft", type=Path, required=True)
@@ -162,6 +187,8 @@ def _doctor(store: StateStore) -> dict[str, Any]:
             "config_exists": config_path().exists(),
             "database": str(store.path),
             "bili_executable": bili_path,
+            "opencli_available": opencli_executable() is not None,
+            "sau_available": sau.executable().is_file(),
             "live_publish": False,
         }
     )
@@ -184,6 +211,10 @@ def _handle(args: argparse.Namespace, store: StateStore) -> dict[str, Any]:
             added = store.add_account(args.platform, args.alias)
             return _ok({"platform": args.platform, "alias": args.alias, "created": added, "logged_in": False})
         if args.accounts_command == "probe":
+            if args.platform == "wechat_mp":
+                if not args.account:
+                    raise SocialAgentError("invalid_account", "请使用 --account 指定公众号账号。")
+                return _ok(probe_wechat_account(args.account, store))
             if args.platform == "xiaohongshu":
                 return _ok(XiaohongshuAdapter(store).probe())
             if args.platform != "bilibili":
@@ -246,7 +277,7 @@ def _handle(args: argparse.Namespace, store: StateStore) -> dict[str, Any]:
         if not callable(research):
             raise SocialAgentError("research_unavailable", f"{args.platform} 暂无公开调研能力")
         operation_id = store.start_operation(
-            "research", args.platform, True, {"kind": "hot_search", "limit": args.limit}
+            "research", args.platform, True, {"kind": "hot_search" if args.platform == "bilibili" else "public_research", "limit": args.limit}
         )
         try:
             result = research(limit=args.limit)
@@ -257,13 +288,25 @@ def _handle(args: argparse.Namespace, store: StateStore) -> dict[str, Any]:
         return _ok({"platform": args.platform, "operation_id": operation_id, "result": result})
     if args.command == "content":
         if args.content_command == "create":
-            path = create_draft(args.title, args.body, args.platforms, args.tags, args.media, args.output)
+            path = create_draft(args.title, args.body, args.platforms, args.tags, args.media, args.output,
+                                cover=args.cover, ai_generated=args.ai_generated)
             return _ok({"path": str(path), "platforms": args.platforms}, message="草稿已保存；当前为模板复制，没有调用生成模型。")
         try:
             data = json.loads(args.draft.expanduser().read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise SocialAgentError("invalid_draft", "无法读取草稿 JSON") from exc
         return _ok(data)
+    if args.command == "capabilities":
+        return _ok(capabilities(args.platform, args.account, store))
+    if args.command == "drafts":
+        command = args.drafts_command
+        if command == "save":
+            return _ok(save_draft(args.draft, args.platform, args.account, store))
+        if command == "handoff":
+            return _ok(prepare_handoff(args.draft, args.platform, args.account, store))
+        if command == "verify":
+            return _ok(verify_draft(store, args.operation, args.reference))
+        return _ok(record_handoff(store, args.operation, args.account, args.scope, args.reference))
     if args.command == "publish":
         if args.execute:
             raise SocialAgentError(

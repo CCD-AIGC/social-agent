@@ -1,4 +1,5 @@
 import json
+from uuid import uuid4
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -6,7 +7,7 @@ from typing import Any
 from .errors import SocialAgentError
 from .paths import drafts_path, secure_mkdir
 
-SUPPORTED_PLATFORMS = ("xiaohongshu", "douyin", "zhihu", "youtube", "bilibili")
+from .platforms import list_platforms
 
 
 def create_draft(
@@ -16,30 +17,30 @@ def create_draft(
     tags: list[str] | None = None,
     media: list[str] | None = None,
     output: Path | None = None,
+    *,
+    cover: str | None = None,
+    ai_generated: bool = False,
 ) -> Path:
     if not title.strip() or not body.strip():
         raise SocialAgentError("invalid_draft", "标题和正文不能为空")
     if not platforms:
         raise SocialAgentError("invalid_draft", "至少指定一个目标平台")
-    unknown = sorted(set(platforms) - set(SUPPORTED_PLATFORMS))
+    unknown = sorted(set(platforms) - {item["id"] for item in list_platforms()})
     if unknown:
         raise SocialAgentError("unknown_platform", f"不支持的平台: {', '.join(unknown)}")
     media_paths = [str(Path(item).expanduser().resolve()) for item in (media or [])]
-    draft_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    draft_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:12]
+    fields = {"title": title.strip(), "body": body.strip(), "tags": tags or [], "media": media_paths}
+    if cover:
+        fields["cover"] = str(Path(cover).expanduser().resolve())
+    if ai_generated:
+        fields["ai_generated"] = True
     draft: dict[str, Any] = {
         "schema_version": 1,
         "id": draft_id,
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "source": {"title": title.strip(), "body": body.strip(), "tags": tags or [], "media": media_paths},
-        "targets": {
-            platform: {
-                "title": title.strip(),
-                "body": body.strip(),
-                "tags": tags or [],
-                "media": media_paths,
-            }
-            for platform in dict.fromkeys(platforms)
-        },
+        "source": fields,
+        "targets": {platform: fields for platform in dict.fromkeys(platforms)},
     }
     target = output.expanduser().resolve() if output else drafts_path() / f"{draft_id}.json"
     secure_mkdir(target.parent)
@@ -71,6 +72,9 @@ def preview_target(platform: str, target: dict[str, Any]) -> dict[str, Any]:
     missing = [item for item in media if not Path(item).expanduser().is_file()]
     if missing:
         raise SocialAgentError("missing_media", f"{platform} 素材文件不存在: {missing[0]}")
+    cover = target.get("cover")
+    if cover and not Path(cover).expanduser().is_file():
+        raise SocialAgentError("missing_media", "封面文件不存在。")
     return {
         "platform": platform,
         "title": title,
@@ -79,5 +83,7 @@ def preview_target(platform: str, target: dict[str, Any]) -> dict[str, Any]:
         "tags": target.get("tags", []),
         "media": media,
         "media_count": len(media),
+        "cover": cover,
+        "ai_generated": target.get("ai_generated", False),
         "live_publish": False,
     }

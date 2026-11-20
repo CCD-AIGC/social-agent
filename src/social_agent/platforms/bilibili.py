@@ -57,5 +57,13 @@ class BilibiliAdapter:
     def metrics(self) -> dict[str, Any]:
         return self._run_json(["data", "overview"], timeout=60)
 
+    def works(self, *, limit: int = 10) -> list[dict[str, Any]]:
+        result = self._run_json(["upload", "list", "--size", str(limit)])
+        items = result.get("items")
+        if not isinstance(items, list):
+            raise SocialAgentError("invalid_upstream_response", "bili 未返回稿件列表。")
+        fields = ("bvid", "title", "state", "state_desc", "dynamic", "ptime", "pubdate", "ctime", "dtime")
+        return [{key: item[key] for key in fields if key in item} for item in items if isinstance(item, dict)]
+
     def research(self, *, limit: int = 10) -> dict[str, Any]:
         return self._run_json(["hot", "search", "--limit", str(limit)])

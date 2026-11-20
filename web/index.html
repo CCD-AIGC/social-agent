@@ -27,6 +27,16 @@
           <button class="nav-item" data-view="publish"><span class="nav-icon">↗</span>发布预览</button>
           <button class="nav-item" data-view="activity"><span class="nav-icon">≡</span>操作记录</button>
         </nav>
+        <div class="sidebar-shortcuts">
+          <h2 id="common-backends-title">常用后台</h2>
+          <nav class="creator-shortcuts" aria-labelledby="common-backends-title">
+            <a href="https://mp.weixin.qq.com/" target="_blank" rel="noreferrer">公众号后台 ↗</a>
+            <a href="/go/wechat-materials" target="_blank" rel="noreferrer">公众号素材管理 ↗</a>
+            <a href="https://creator.xiaohongshu.com/new/home" target="_blank" rel="noreferrer">小红书创作中心 ↗</a>
+            <a href="https://channels.weixin.qq.com/platform/post/list" target="_blank" rel="noreferrer">视频号内容管理 ↗</a>
+            <a href="https://member.bilibili.com/platform/upload-manager/article?spm_id_from=333.1007.0.0" target="_blank" rel="noreferrer">B 站稿件管理 ↗</a>
+          </nav>
+        </div>
         <div class="sidebar-footer">
           <div class="footer-label">已接入账号</div>
           <div class="account-mini"><span class="platform-badge">B</span><span id="sidebar-account">正在读取…</span><span class="connected-dot"></span></div>
@@ -47,7 +57,7 @@
         </header>
 
         <section class="view is-visible" id="view-overview" data-view-panel="overview">
-          <div class="notice-bar"><span class="notice-icon">i</span><span>B 站提供账号概览，小红书支持导入官方笔记报表。所有发布均为本地预览。</span></div>
+          <div class="notice-bar"><span class="notice-icon">i</span><span>核对各平台的草稿、排期和作品状态，可直接打开常用后台。</span></div>
           <div class="metric-grid">
             <article class="metric-card accent-green">
               <div class="metric-label">账号状态</div>
@@ -102,8 +112,8 @@
         </section>
 
         <section class="view" id="view-research" data-view-panel="research">
-          <div class="view-intro"><div><div class="eyebrow">RESEARCH</div><h2>选题调研</h2><p>从 B 站公开热搜开始，先看趋势，再决定是否进入内容草稿。</p></div><div class="control-group"><label for="research-limit">条数</label><select id="research-limit"><option>10</option><option>20</option><option>30</option></select><button class="button button-primary" id="research-button">刷新热搜</button></div></div>
-          <section class="panel"><div class="table-toolbar"><div><strong>B 站热搜</strong><span class="toolbar-meta" id="research-source">数据源：bili-cli</span></div><span class="panel-muted" id="research-updated">—</span></div><div class="research-table-wrap"><table class="data-table"><thead><tr><th>排名</th><th>关键词</th><th>热度</th><th>下一步</th></tr></thead><tbody id="research-table"><tr><td colspan="4"><div class="empty-state">点击“刷新热搜”开始调研</div></td></tr></tbody></table></div></section>
+          <div class="view-intro"><div><div class="eyebrow">RESEARCH</div><h2>选题调研</h2><p>查看 B 站热搜与 OpenCLI 的公开调研源。</p></div><div class="control-group"><label for="research-platform">来源</label><select id="research-platform"><option value="bilibili">B 站热搜</option></select><label for="research-limit">条数</label><select id="research-limit"><option>10</option><option>20</option><option>30</option></select><button class="button button-primary" id="research-button">刷新热搜</button></div></div>
+          <section class="panel"><div class="table-toolbar"><div><strong id="research-heading">B 站热搜</strong><span class="toolbar-meta" id="research-source">数据源：bili-cli</span></div><span class="panel-muted" id="research-updated">—</span></div><div class="research-table-wrap"><table class="data-table"><thead><tr><th>排名</th><th>关键词</th><th>热度</th><th>下一步</th></tr></thead><tbody id="research-table"><tr><td colspan="4"><div class="empty-state">点击“刷新热搜”开始调研</div></td></tr></tbody></table></div></section>
         </section>
 
         <section class="view" id="view-platforms" data-view-panel="platforms">
@@ -114,12 +124,12 @@
 
         <section class="view" id="view-drafts" data-view-panel="drafts">
           <div class="view-intro"><div><div class="eyebrow">CONTENT</div><h2>内容草稿</h2><p>先保存平台版本，再到发布预览中检查素材和任务记录。</p></div><span class="safe-pill">本地保存</span></div>
-          <div class="two-column drafts-layout"><section class="panel"><div class="panel-header"><div><div class="panel-kicker">NEW DRAFT</div><h2>创建内容</h2></div></div><form id="draft-form" class="form-stack"><label>标题<input name="title" required maxlength="100" placeholder="例如：AI 工具实践记录" /></label><label>正文<textarea name="body" required maxlength="20000" rows="7" placeholder="写下需要适配到各个平台的正文…"></textarea></label><fieldset><legend>目标平台</legend><div class="platform-checks"><label><input type="checkbox" name="platforms" value="bilibili" checked /> B 站</label><label><input type="checkbox" name="platforms" value="xiaohongshu" /> 小红书</label><label><input type="checkbox" name="platforms" value="douyin" /> 抖音</label><label><input type="checkbox" name="platforms" value="zhihu" /> 知乎</label><label><input type="checkbox" name="platforms" value="youtube" /> YouTube</label></div></fieldset><label>标签<input name="tags" placeholder="用逗号分隔，例如：AI,内容运营" /></label><div class="form-actions"><button class="button button-primary" type="submit">保存草稿</button><span class="form-hint" id="draft-form-status"></span></div></form></section><section class="panel"><div class="panel-header"><div><div class="panel-kicker">LOCAL DRAFTS</div><h2>已有草稿</h2></div><button class="text-button" id="draft-refresh">刷新</button></div><div class="draft-list" id="draft-list"><div class="empty-state">正在读取草稿…</div></div></section></div>
+          <div class="two-column drafts-layout"><section class="panel"><div class="panel-header"><div><div class="panel-kicker">NEW DRAFT</div><h2>创建内容</h2></div></div><form id="draft-form" class="form-stack"><label>标题<input name="title" required maxlength="100" placeholder="例如：AI 工具实践记录" /></label><label>正文<textarea name="body" required maxlength="20000" rows="7" placeholder="写下需要适配到各个平台的正文…"></textarea></label><fieldset><legend>目标平台</legend><div class="platform-checks" id="draft-platforms"></div></fieldset><label>标签<input name="tags" placeholder="用逗号分隔，例如：AI,内容运营" /></label><label>视频<input name="video" type="file" accept="video/mp4,video/quicktime,video/x-m4v" /></label><label>封面（JPEG，最大 64 KiB）<input name="cover" type="file" accept="image/jpeg" /></label><label><input name="ai_generated" type="checkbox" /> AI 辅助制作</label><div class="form-actions"><button class="button button-primary" type="submit">保存草稿</button><span class="form-hint" id="draft-form-status"></span></div></form></section><section class="panel"><div class="panel-header"><div><div class="panel-kicker">LOCAL DRAFTS</div><h2>已有草稿</h2></div><button class="text-button" id="draft-refresh">刷新</button></div><div class="draft-list" id="draft-list"><div class="empty-state">正在读取草稿…</div></div></section></div>
         </section>
 
         <section class="view" id="view-publish" data-view-panel="publish">
-          <div class="view-intro"><div><div class="eyebrow">PUBLISH PREVIEW</div><h2>发布预览</h2><p>这里会校验草稿、素材路径和目标平台，并写入本地操作台账。</p></div><span class="blocked-pill">真实发布未开启</span></div>
-          <section class="panel"><div class="publish-toolbar"><label>选择草稿<select id="publish-draft-select"><option value="">请选择本地草稿</option></select></label><button class="button button-primary" id="preview-button">生成预览</button></div><div class="publish-guard"><span class="guard-icon">!</span><div><strong>安全闸门</strong><p>当前只执行 dry-run，不会上传、发布或修改平台账号。</p></div></div><div id="preview-result" class="preview-result"><div class="empty-state">选择草稿后生成预览</div></div></section>
+          <div class="view-intro"><div><div class="eyebrow">PUBLISH PREVIEW</div><h2>发布预览</h2><p>这里会校验草稿、素材路径和目标平台，并写入本地操作台账。</p></div><span class="safe-pill">逐平台操作</span></div>
+          <section class="panel"><div class="publish-toolbar"><label>选择草稿<select id="publish-draft-select"><option value="">请选择本地草稿</option></select></label><button class="button button-primary" id="preview-button">生成预览</button></div><div class="publish-guard"><span class="guard-icon">!</span><div><strong>安全闸门</strong><p>按平台保存草稿。小红书视频支持远期定时，视频号支持自动存草稿。</p></div></div><div id="preview-result" class="preview-result"><div class="empty-state">选择草稿后生成预览</div></div><div id="remote-draft-result" class="integration-placeholder" hidden></div></section>
         </section>
 
         <section class="view" id="view-activity" data-view-panel="activity">

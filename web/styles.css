@@ -150,3 +150,37 @@ label { color: #526159; font-size: 11px; font-weight: 700; }.control-group label
 .xhs-data p {
   margin-top: 0.4rem;
 }
+
+#remote-draft-result {
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+#remote-draft-result .form-stack,
+#wechat-account-form {
+  max-width: 480px;
+}
+#remote-draft-result .form-actions {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.preview-item .form-stack {
+  margin-top: 10px;
+}
+.platform-mark.wechat_mp,
+.platform-mark.wechat_channels {
+  background: #e6f3ea;
+  color: #2d6f45;
+}
+
+.sidebar-shortcuts { border-top: 1px solid var(--line); margin: 20px 0 18px; padding-top: 12px; }
+.sidebar-shortcuts h2 { color: var(--ink); font-size: 13px; margin: 0 0 4px; padding: 0 12px; }
+.creator-shortcuts { display: flex; flex-direction: column; gap: 2px; }
+.creator-shortcuts a { border-radius: 7px; color: var(--green); font-size: 13px; padding: 7px 12px; text-decoration: none; }
+.creator-shortcuts a:hover, .creator-shortcuts a:focus-visible { background: #e2ebe4; text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .sidebar-shortcuts { margin: 8px 0 0; padding-top: 8px; }
+  .sidebar-shortcuts h2 { padding: 0 10px; }
+  .creator-shortcuts { flex-direction: row; flex-wrap: wrap; gap: 0; }
+  .creator-shortcuts a { padding: 6px 10px; }
+}

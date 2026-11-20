@@ -10,6 +10,9 @@ class PlatformInfo:
     publish: str = "dry-run-only"
     auth: str = "not-configured"
     notes: str = ""
+    mark: str = ""
+    creator_url: str = ""
+    capabilities: tuple[tuple[str, str, str], ...] = ()
 
 
 class PlatformAdapter(Protocol):

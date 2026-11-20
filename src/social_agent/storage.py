@@ -63,6 +63,17 @@ class StateStore:
                     notes_json TEXT NOT NULL,
                     PRIMARY KEY (platform, account)
                 );
+                CREATE TABLE IF NOT EXISTS account_verifications (
+                    platform TEXT NOT NULL,
+                    alias TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    PRIMARY KEY (platform, alias)
+                );
+                CREATE TABLE IF NOT EXISTS remote_draft_keys (
+                    fingerprint TEXT PRIMARY KEY,
+                    operation_id TEXT NOT NULL UNIQUE REFERENCES operations(id)
+                );
                 CREATE TABLE IF NOT EXISTS scheduled_jobs (
                     id TEXT PRIMARY KEY,
                     draft_path TEXT NOT NULL,
@@ -115,15 +126,61 @@ class StateStore:
                 "FROM operations ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
-        return [
-            {
-                **dict(row),
-                "dry_run": bool(row["dry_run"]),
-                "request": json.loads(row["request_json"]),
-                "result": json.loads(row["result_json"]) if row["result_json"] else None,
-            }
-            for row in rows
-        ]
+        return [self._operation(row) for row in rows]
+
+    def reserve_draft(self, fingerprint: str, platform: str, request: dict, *, handoff: bool = False) -> tuple[dict, bool]:
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """SELECT operations.* FROM operations JOIN remote_draft_keys
+                ON remote_draft_keys.operation_id=operations.id WHERE fingerprint=?""", (fingerprint,),
+            ).fetchone()
+            if row and row["status"] != "failed":
+                return self._operation(row), False
+            operation_id = row["id"] if row else uuid.uuid4().hex
+            status = "handoff_ready" if handoff else "queued"
+            if row:
+                conn.execute(
+                    """UPDATE operations SET status=?, request_json=?, created_at=?,
+                    finished_at=NULL, error_code=NULL WHERE id=?""",
+                    (status, json_text(request), utc_now(), operation_id),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO operations (id, action, platform, status, dry_run, request_json, created_at)
+                    VALUES (?, ?, ?, ?, 0, ?, ?)""",
+                    (operation_id, "remote_draft", platform, status, json_text(request), utc_now()),
+                )
+                conn.execute("INSERT INTO remote_draft_keys VALUES (?, ?)", (fingerprint, operation_id))
+            row = conn.execute("SELECT * FROM operations WHERE id=?", (operation_id,)).fetchone()
+            return self._operation(row), True
+
+    def draft_operation(self, operation_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM operations WHERE id=? AND action='remote_draft'", (operation_id,),
+            ).fetchone()
+        return self._operation(row) if row else None
+
+    def advance_draft(self, operation_id: str, source: str, target: str, result: dict | None = None,
+                      error_code: str | None = None) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """UPDATE operations SET status=?, result_json=COALESCE(?, result_json), error_code=?,
+                finished_at=? WHERE id=? AND action='remote_draft' AND status=?""",
+                (target, json_text(result) if result is not None else None, error_code, utc_now(),
+                 operation_id, source),
+            )
+            return cursor.rowcount == 1
+
+    @staticmethod
+    def _operation(row: sqlite3.Row) -> dict:
+        return {
+            **dict(row),
+            "dry_run": bool(row["dry_run"]),
+            "request": json.loads(row["request_json"]),
+            "result": json.loads(row["result_json"]) if row["result_json"] else None,
+        }
 
     def add_account(self, platform: str, alias: str) -> bool:
         with self._connect() as conn:
@@ -138,6 +195,25 @@ class StateStore:
                 "SELECT platform, alias, created_at FROM accounts ORDER BY platform, alias"
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def save_account_verification(self, platform: str, alias: str, result: dict | None) -> None:
+        with self._connect() as conn:
+            if result is None:
+                conn.execute("DELETE FROM account_verifications WHERE platform=? AND alias=?", (platform, alias))
+                return
+            conn.execute(
+                """INSERT INTO account_verifications VALUES (?, ?, ?, ?)
+                ON CONFLICT(platform, alias) DO UPDATE SET result_json=excluded.result_json,
+                checked_at=excluded.checked_at""", (platform, alias, json_text(result), utc_now()),
+            )
+
+    def account_verification(self, platform: str, alias: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT result_json, checked_at FROM account_verifications WHERE platform=? AND alias=?",
+                (platform, alias),
+            ).fetchone()
+        return {**json.loads(row["result_json"]), "checked_at": row["checked_at"]} if row else None
 
     def save_note_snapshot(
         self, platform: str, account: str, exported_at: str | None, notes: list[dict]
